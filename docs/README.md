@@ -37,6 +37,7 @@ MultiMediaApp/
 
 ## Prerequisites
 
+
 ### Operating System
 * **Linux** (Ubuntu 20.04+ recommended)
 * **Windows** (with [WSL2](https://docs.microsoft.com/en-us/windows/wsl/install) for compatibility)
@@ -46,51 +47,68 @@ MultiMediaApp/
 * **C++ Compiler:** `g++` (supporting C++17 or later)
 * **Python:** Python 3.7+
 * **Git:** Version control system
-* **Make or CMake:** Build automation tools (optional, if using Makefiles or CMakeLists)
+* **libcurl:** HTTP client library for C
+* **POSIX Thread Library:** For multithreading support
+* **Make or CMake:** Build automation tools (optional)
 
-### Libraries and Tools
-* **Networking Libraries:** Included in standard C++ libraries (`<sys/socket.h>`, `<netinet/in.h>`, etc.)
-* **Flask:** Python web framework
+### Python Dependencies
+* **Flask:** Web framework
 * **Flask-SocketIO:** Real-time communication for Flask
-* **Flask-CORS:** Cross-Origin Resource Sharing support for Flask
-* **OpenCV:** (Optional) For multimedia handling (audio/video)
-* **FFmpeg:** (Optional) For audio/video encoding and decoding
-* **PortAudio:** (Optional) For audio capture/playback (future enhancement)
+* **Flask-CORS:** Cross-Origin Resource Sharing support
+* **eventlet:** Networking library required by Flask-SocketIO
 
-### Additional Tools
-* **Wireshark:** For packet capturing and debugging
-* **Postman or curl:** For testing HTTP endpoints
+### System Libraries (C++)
+* Standard C/C++ Libraries:
+  * stdio.h
+  * string.h
+  * stdlib.h
+  * unistd.h
+* Networking Libraries:
+  * arpa/inet.h
+  * pthread.h
+  * curl/curl.h
 
 ## Installation
 
 ### 1. Clone the Repository
 
-Open your terminal and clone the GitHub repository:
+[Previous clone instructions remain the same...]
 
+### 2. Install System Dependencies
+
+For Ubuntu/Debian:
 ```bash
-git clone https://github.com/markross0328/MultiMediaChat.git
-cd MultiMediaChat
+sudo apt update
+sudo apt install -y build-essential libcurl4-openssl-dev
 ```
 
-### 2. Set Up the Python Environment
+For macOS:
+```bash
+brew install curl
+```
+
+### 3. Set Up the Python Environment
 
 Create and activate a virtual environment:
 
 ```bash
 python3 -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # On Unix/macOS
+# or
+venv\Scripts\activate     # On Windows
 ```
 
-On Windows:
-```bash
-python -m venv venv
-venv\Scripts\activate
+### 4. Install Python Dependencies
+
+Create a requirements.txt file with the following content:
+```
+Flask
+Flask-SocketIO
+Flask-CORS
+eventlet
 ```
 
-### 3. Install Python Dependencies
-
-Install required packages:
-
+Then install the requirements:
 ```bash
 pip install -r requirements.txt
 ```
