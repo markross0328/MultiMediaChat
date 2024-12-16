@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Chat</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .chat-section {
+            flex: 3;
+        }
+
+        .users-section, .private-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #messages,
+        #active-users,
+        #private-messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 15px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 15px;
+        }
+
+        .section-title {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            color: #444;
+            font-weight: bold;
+        }
+
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            line-height: 1.4;
+        }
+
+        .user-item {
+            padding: 8px;
+            margin: 5px 0;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .welcome-message {
+            color: #666;
+            font-style: italic;
+        }
+
+        .private-message {
+            background-color: #fff3e0;
+            /* Light orange background */
+            font-style: italic;
+        }
+        
+        .system-message {
+            color: #999;
+            font-style: italic;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Live Chat</h1>
+    <div class="container">
+        <div class="chat-section">
+            <div class="section-title">Chat Messages</div>
+            <div id="messages">
+                <div class="message welcome-message">Welcome to the chat!</div>
+                {% for message in messages %}
+                <div class="message">{{ message }}</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="users-section">
+            <div class="section-title">Active Users</div>
+            <div id="active-users"></div>
+        </div>
+        
+        <div class="private-section">
+            <div class="section-title">Private Messages</div>
+            <div id="private-messages"></div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const messagesDiv = document.getElementById('messages');
+        const privateMessagesDiv = document.getElementById('private-messages');
+        const activeUsersDiv = document.getElementById('active-users');
+        const activeUsers = new Set();
+
+        // Prompt user for their username upon loading the page
+        const username = prompt("Enter your username:");
+        if (username && username.trim() !== "") {
+            socket.emit('identify', { username: username.trim() });
+        }
+
+        socket.on('chat_message', (data) => {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            if (data.isPrivate) {
+                messageDiv.classList.add('private-message');
+            }
+            messageDiv.textContent = data.message;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            if (data.username) {
+                activeUsers.add(data.username);
+                updateActiveUsersList();
+            }
+        });
+
+        socket.on('private_message', (data) => {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message private-message';
+            messageDiv.textContent = data.message;
+            privateMessagesDiv.appendChild(messageDiv);
+            privateMessagesDiv.scrollTop = privateMessagesDiv.scrollHeight;
+        });
+
+        socket.on('user_disconnected', (data) => {
+            if (data.username && activeUsers.has(data.username)) {
+                activeUsers.delete(data.username);
+                updateActiveUsersList();
+
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message system-message';
+                messageDiv.textContent = `${data.username} has disconnected`;
+                messagesDiv.appendChild(messageDiv);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+        });
+
+        socket.on('active_users', (data) => {
+            data.users.forEach(user => activeUsers.add(user));
+            updateActiveUsersList();
+        });
+
+        function updateActiveUsersList() {
+            activeUsersDiv.innerHTML = '';
+            activeUsers.forEach(username => {
+                const userDiv = document.createElement('div');
+                userDiv.className = 'user-item';
+                userDiv.textContent = username;
+                activeUsersDiv.appendChild(userDiv);
+            });
+        }
+    </script>
+</body>
+
+</html>
