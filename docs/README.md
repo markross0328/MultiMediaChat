@@ -67,12 +67,18 @@ MultiMediaApp/
   * arpa/inet.h
   * pthread.h
   * curl/curl.h
-
+  * 
 ## Installation
 
 ### 1. Clone the Repository
 
-[Previous clone instructions remain the same...]
+Open your terminal and clone the GitHub repository:
+
+```bash
+git clone https://github.com/markross0328/MultiMediaChat.git
+cd MultiMediaChat
+```
+
 
 ### 2. Install System Dependencies
 
