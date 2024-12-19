@@ -106,14 +106,6 @@ venv\Scripts\activate     # On Windows
 
 ### 4. Install Python Dependencies
 
-Create a requirements.txt file with the following content:
-```
-Flask
-Flask-SocketIO
-Flask-CORS
-eventlet
-```
-
 Then install the requirements:
 ```bash
 pip install -r requirements.txt
@@ -125,7 +117,9 @@ Navigate to the SERVER directory and build the server:
 
 ```bash
 cd SERVER
-g++ -std=c++17 -pthread -o server server.c protocol/protocol.c video/videochat.c -lavcodec -lavformat -lavutil -lswscale -lopencv_core -lopencv_highgui
+gcc -c ../protocol/protocol.c -o protocol.o
+gcc -c server.c -o server.o
+gcc server.o protocol.o -o server -lpthread -lcurl
 ```
 
 ### 5. Build the C++ Client
@@ -134,7 +128,9 @@ Navigate to the CLIENT directory and build the client:
 
 ```bash
 cd ../CLIENT
-g++ -std=c++17 -pthread -o client client.c protocol/protocol.c
+gcc -c ../protocol/protocol.c -o protocol.o
+gcc -c client.c -o client.o
+gcc client.o protocol.o -o client
 ```
 
 ## Running the Application
