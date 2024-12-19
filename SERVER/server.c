@@ -198,19 +198,22 @@ void *handle_client(void *arg)
                     pthread_mutex_unlock(&clients_mutex);
                 }
             }
-            if(memcpy(&packet, buffer, sizeof(struct Packet)) && (strcmp(packet.header, MSG_TYPE_PRIVATE) == 0)) {
+            else
+            {
+                memcpy(&packet, buffer, sizeof(struct Packet));
+
                 if (strcmp(packet.header, MSG_TYPE_PRIVATE) == 0)
                 {
                     send_private_message(&packet);
-
+                    
                     // JSON for private message
                     char json_buffer[JSON_BUFFER_SIZE];
                     int json_len = snprintf(json_buffer, JSON_BUFFER_SIZE,
-                                            "{\"message\": \"%s\", \"username\": \"%s\", \"header\": \"%s\", \"dest\": \"%s\", \"isPrivate\": true}",
-                                            packet.data,
-                                            packet.sender,
-                                            packet.header,
-                                            packet.dest);
+                            "{\"message\": \"%s\", \"username\": \"%s\", \"header\": \"%s\", \"dest\": \"%s\"}",
+                            packet.data,
+                            packet.sender,
+                            packet.header,
+                            packet.dest);
 
                     if (json_len >= JSON_BUFFER_SIZE)
                     {
@@ -218,56 +221,55 @@ void *handle_client(void *arg)
                         continue;
                     }
                     send_to_flask(json_buffer);
-            
-            }
-            else
-            {
-                broadcast_message(&packet, client_socket);
-
-                // JSON for regular message
-                char json_buffer[JSON_BUFFER_SIZE];
-                int json_len = snprintf(json_buffer, JSON_BUFFER_SIZE,
-                                        "{\"message\": \"%s\", \"username\": \"%s\", \"header\": \"%s\"}",
-                                        packet.data,
-                                        packet.sender,
-                                        packet.header);
-
-                if (json_len >= JSON_BUFFER_SIZE)
-                {
-                    fprintf(stderr, "JSON buffer overflow\n");
-                    continue;
                 }
-                send_to_flask(json_buffer);
-            }
-        }
-    }
-    else if (valread == 0)
-    {
-        printf("Client disconnected.\n");
-        pthread_mutex_lock(&clients_mutex);
-        for (int i = 0; i < MAX_CLIENTS; i++)
-        {
-            if (clients[i].socket == client_socket)
-            {
-                notify_flask_disconnect(clients[i].username);
-                clients[i].socket = 0;
-                clients[i].active = 0;
-                break;
-            }
-        }
-        pthread_mutex_unlock(&clients_mutex);
-        break;
-    }
-    else
-    {
-        perror("Read failed");
-        break;
-    }
-}
+                else
+                {
+                    broadcast_message(&packet, client_socket);
 
-close(client_socket);
-free(arg);
-return NULL;
+                    // JSON for regular message
+                    char json_buffer[JSON_BUFFER_SIZE];
+                    int json_len = snprintf(json_buffer, JSON_BUFFER_SIZE,
+                            "{\"message\": \"%s\", \"username\": \"%s\", \"header\": \"%s\"}",
+                            packet.data,
+                            packet.sender,
+                            packet.header);
+
+                    if (json_len >= JSON_BUFFER_SIZE)
+                    {
+                        fprintf(stderr, "JSON buffer overflow\n");
+                        continue;
+                    }
+                    send_to_flask(json_buffer);
+                }
+            }
+        }
+        else if (valread == 0)
+        {
+            printf("Client disconnected.\n");
+            pthread_mutex_lock(&clients_mutex);
+            for (int i = 0; i < MAX_CLIENTS; i++)
+            {
+                if (clients[i].socket == client_socket)
+                {
+                    notify_flask_disconnect(clients[i].username);
+                    clients[i].socket = 0;
+                    clients[i].active = 0;
+                    break;
+                }
+            }
+            pthread_mutex_unlock(&clients_mutex);
+            break;
+        }
+        else
+        {
+            perror("Read failed");
+            break;
+        }
+    }
+
+    close(client_socket);
+    free(arg);
+    return NULL;
 }
 
 int main()
