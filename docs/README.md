@@ -117,7 +117,7 @@ pip install -r requirements.txt
 Navigate to the SERVER directory and build the server:
 
 ```bash
-cd SERVER
+cd ../SERVER
 gcc -c ../protocol/protocol.c -o protocol.o
 gcc -c server.c -o server.o
 gcc server.o protocol.o -o server -lpthread -lcurl
