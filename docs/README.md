@@ -133,7 +133,7 @@ gcc -c client.c -o client.o
 gcc client.o protocol.o -o client
 ```
 
-## Running the Application
+## Running the Application: Use tmux to open 3 terminals
 
 ### 1. Start the Flask Frontend
 ```bash

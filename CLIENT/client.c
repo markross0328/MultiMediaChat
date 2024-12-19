@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <pthread.h> 
+#include <pthread.h>
 #include "../protocol/protocol.h"
 
 #define PORT 8080
@@ -83,6 +83,7 @@ int main()
             {
                 struct Packet packet = createPrivatePacket(private_msg, username, dest);
                 sendPacket(sock, &packet);
+                printf("(Private to %s): %s\n", dest, private_msg);
             }
         }
         else

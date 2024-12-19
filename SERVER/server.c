@@ -1,345 +1,237 @@
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <pthread.h>
-#include <curl/curl.h>
-#include "../protocol/protocol.h"
+<!DOCTYPE html>
+<html lang="en">
 
-#define PORT 8080
-#define BUFFER_SIZE 4096
-#define JSON_BUFFER_SIZE 4096
-#define MAX_CLIENTS 10
-#define USERNAME_SIZE 32
-
-
-struct client_info
-{
-    int socket;
-    char username[USERNAME_SIZE];
-    int active;
-};
-
-void broadcast_message(struct Packet *packet, int sender_socket);
-void send_private_message(struct Packet *packet);
-void send_to_flask(const char *message);
-void notify_flask_disconnect(const char *username);
-
-struct client_info clients[MAX_CLIENTS] = {0}; // Initialize array of clients
-pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-void send_to_flask(const char *message)
-{
-    CURL *curl = curl_easy_init();
-    if (curl)
-    {
-        const char *flask_url = "http://127.0.0.1:5000/api/message";
-
-        struct curl_slist *headers = NULL;
-        headers = curl_slist_append(headers, "Content-Type: application/json");
-
-        curl_easy_setopt(curl, CURLOPT_URL, flask_url);
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, message);
-
-        char error_buffer[CURL_ERROR_SIZE];
-        curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, error_buffer);
-
-        CURLcode res = curl_easy_perform(curl);
-        if (res != CURLE_OK)
-        {
-            fprintf(stderr, "Flask request failed: %s\n", error_buffer);
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Chat</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
         }
 
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
-    }
-}
-
-void broadcast_message(struct Packet *packet, int sender_socket)
-{
-    pthread_mutex_lock(&clients_mutex);
-    for (int i = 0; i < MAX_CLIENTS; i++)
-    {
-        if (clients[i].socket != 0 &&
-            clients[i].active &&
-            clients[i].socket != sender_socket)
-        {
-            sendPacket(clients[i].socket, packet);
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+            background-color: #f0f2f5;
+            color: #1c1e21;
         }
-    }
-    pthread_mutex_unlock(&clients_mutex);
-}
 
-void send_private_message(struct Packet *packet)
-{
-    pthread_mutex_lock(&clients_mutex);
-    for (int i = 0; i < MAX_CLIENTS; i++)
-    {
-        if (clients[i].socket != 0 &&
-            clients[i].active &&
-            strcmp(clients[i].username, packet->dest) == 0)
-        {
-            sendPacket(clients[i].socket, packet);
-            break;
+        h1 {
+            margin-bottom: 20px;
+            color: #1877f2;
+            text-align: center;
         }
-    }
-    pthread_mutex_unlock(&clients_mutex);
-}
 
-void notify_flask_disconnect(const char *username)
-{
-    CURL *curl = curl_easy_init();
-    if (curl)
-    {
-        const char *flask_url = "http://127.0.0.1:5000/api/disconnect";
-        char json_payload[256];
-        snprintf(json_payload, sizeof(json_payload), "{\"username\": \"%s\"}", username);
-
-        struct curl_slist *headers = NULL;
-        headers = curl_slist_append(headers, "Content-Type: application/json");
-
-        curl_easy_setopt(curl, CURLOPT_URL, flask_url);
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_payload);
-
-        curl_easy_perform(curl);
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
-    }
-}
-
-void *handle_client(void *arg)
-{
-    int client_socket = *(int *)arg;
-    char buffer[BUFFER_SIZE] = {0};
-    struct Packet packet;
-
-    // Add client to tracking array
-    pthread_mutex_lock(&clients_mutex);
-    int client_index = -1;
-    for (int i = 0; i < MAX_CLIENTS; i++)
-    {
-        if (clients[i].socket == 0)
-        {
-            clients[i].socket = client_socket;
-            clients[i].active = 1;
-            client_index = i;
-            break;
+        .container {
+            display: grid;
+            grid-template-columns: 3fr 1fr 1fr;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
         }
-    }
-    pthread_mutex_unlock(&clients_mutex);
 
-    if (client_index == -1)
-    {
-        printf("No room for new client\n");
-        close(client_socket);
-        free(arg);
-        return NULL;
-    }
+        .chat-section,
+        .users-section,
+        .private-section {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            height: 80vh;
+        }
 
-    while (1)
-    {
-        memset(buffer, 0, BUFFER_SIZE);
-        int valread = read(client_socket, buffer, BUFFER_SIZE);
+        #messages,
+        #active-users,
+        #private-messages {
+            height: calc(100% - 40px);
+            overflow-y: auto;
+            padding: 10px;
+        }
 
-        if (valread > 0)
-        {
-            if (strstr(buffer, "POST /api/message") == buffer) 
-            {
-                char *body = strstr(buffer, "\r\n\r\n");
-                if (body)
-                {
-                    body += 4;
-                    printf("Received message: %s\n", body);
+        .section-title {
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            color: #1877f2;
+            font-weight: 600;
+            border-bottom: 2px solid #e4e6eb;
+            padding-bottom: 10px;
+        }
 
-                    send_to_flask(body);
+        .message {
+            margin: 8px 0;
+            padding: 10px;
+            background: #f0f2f5;
+            border-radius: 15px;
+            line-height: 1.4;
+        }
 
-                    const char *response = "HTTP/1.1 200 OK\r\n"
-                                           "Content-Type: application/json\r\n"
-                                           "Connection: keep-alive\r\n"
-                                           "Content-Length: 29\r\n"
-                                           "\r\n"
-                                           "{\"status\":\"message received\"}";
+        .private-message {
+            background-color: #e7f3ff;
+            border-left: 4px solid #1877f2;
+        }
 
-                    send(client_socket, response, strlen(response), 0);
+        .user-item {
+            padding: 8px 12px;
+            margin: 5px 0;
+            background-color: #e7f3ff;
+            border-radius: 20px;
+            font-size: 0.9em;
+            color: #1877f2;
+        }
 
-                    pthread_mutex_lock(&clients_mutex);
-                    for (int i = 0; i < MAX_CLIENTS; i++)
-                    {
-                        if (clients[i].socket != 0 &&
-                            clients[i].active &&
-                            clients[i].socket != client_socket)
-                        {
+        .welcome-message {
+            color: #65676b;
+            text-align: center;
+            padding: 20px;
+            background: #e7f3ff;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
 
-                            char broadcast_response[BUFFER_SIZE];
-                            snprintf(broadcast_response, sizeof(broadcast_response),
-                                     "HTTP/1.1 200 OK\r\n"
-                                     "Content-Type: application/json\r\n"
-                                     "Content-Length: %zu\r\n"
-                                     "\r\n"
-                                     "%s",
-                                     strlen(body), body);
+        .system-message {
+            color: #65676b;
+            font-style: italic;
+            text-align: center;
+            padding: 5px;
+        }
 
-                            send(clients[i].socket, broadcast_response, strlen(broadcast_response), 0);
-                        }
-                    }
-                    pthread_mutex_unlock(&clients_mutex);
-                }
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #bcc0c4;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #888;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Live Chat</h1>
+    <div class="container">
+        <div class="chat-section">
+            <div class="section-title">Chat Messages</div>
+            <div id="messages">
+                <div class="message welcome-message">Welcome to the chat!</div>
+                {% for message in messages %}
+                <div class="message">{{ message }}</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="users-section">
+            <div class="section-title">Active Users</div>
+            <div id="active-users"></div>
+        </div>
+
+        <div class="private-section">
+            <div class="section-title">Private Messages</div>
+            <div id="private-messages">
+                {% for message in private_messages %}
+                <div class="message private-message">{{ message }}</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const messagesDiv = document.getElementById('messages');
+        const privateMessagesDiv = document.getElementById('private-messages');
+        const activeUsersDiv = document.getElementById('active-users');
+        const activeUsers = new Set();
+
+        // Add logging for connection
+        socket.on('connect', () => {
+            console.log('Connected to server with socket ID:', socket.id);
+        });
+
+        // Prompt user for their username upon loading the page
+        const username = prompt("Enter your username:");
+        if (username && username.trim() !== "") {
+            console.log('Attempting to identify as:', username.trim());
+            socket.emit('identify', { username: username.trim() });
+        }
+
+        socket.on('chat_message', (data) => {
+            console.log('Received chat message:', data);
+            // Only add to main chat if it's not a private message
+            if (!data.isPrivate) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message';
+                messageDiv.textContent = data.message;
+                messagesDiv.appendChild(messageDiv);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
-            else
-            {
-                memcpy(&packet, buffer, sizeof(struct Packet));
 
-                if (strcmp(packet.header, MSG_TYPE_PRIVATE) == 0)
-                {
-                    send_private_message(&packet);
-                }
-                else
-                {
-                    broadcast_message(&packet, client_socket);
-                }
-
-                char json_buffer[JSON_BUFFER_SIZE];
-                int json_len;
-                if (strcmp(packet.header, MSG_TYPE_PRIVATE) == 0)
-                {
-                    json_len = snprintf(json_buffer, JSON_BUFFER_SIZE,
-                                        "{\"message\": \"%s\", \"username\": \"%s\", \"header\": \"%s\", \"dest\": \"%s\"}",
-                                        packet.data,
-                                        packet.sender,
-                                        packet.header,
-                                        packet.dest);
-                }
-                else if (strncmp(buffer, "VIDEO", 5) == 0)
-                {
-                    // Broadcast video frame to all clients
-                    pthread_mutex_lock(&clients_mutex);
-                    for (int i = 0; i < MAX_CLIENTS; i++)
-                    {
-                        if (clients[i].socket != 0 &&
-                            clients[i].active &&
-                            clients[i].socket != client_socket)
-                        {
-                            send(clients[i].socket, buffer, valread, 0);
-                        }
-                    }
-                    pthread_mutex_unlock(&clients_mutex);
-                }
-                {
-                    json_len = snprintf(json_buffer, JSON_BUFFER_SIZE,
-                                        "{\"message\": \"%s\", \"username\": \"%s\", \"header\": \"%s\"}",
-                                        packet.data,
-                                        packet.sender,
-                                        packet.header);
-                }
-
-                if (json_len >= JSON_BUFFER_SIZE)
-                {
-                    fprintf(stderr, "JSON buffer overflow\n");
-                    continue;
-                }
-                send_to_flask(json_buffer);
+            if (data.username) {
+                activeUsers.add(data.username);
+                updateActiveUsersList();
             }
-        }
-        else if (valread == 0)
-        {
-            printf("Client disconnected.\n");
-            pthread_mutex_lock(&clients_mutex);
-            for (int i = 0; i < MAX_CLIENTS; i++)
-            {
-                if (clients[i].socket == client_socket)
-                {
-                    notify_flask_disconnect(clients[i].username);
-                    clients[i].socket = 0;
-                    clients[i].active = 0;
-                    break;
-                }
+        });
+
+        socket.on('private_message', (data) => {
+            console.log('Received private message:', data);
+
+            // Only show if user is sender or recipient
+            if (data.from === username || data.to === username) {
+                const privateDiv = document.createElement('div');
+                privateDiv.className = 'message private-message';
+                privateDiv.textContent = data.message;
+                privateMessagesDiv.appendChild(privateDiv);
+                privateMessagesDiv.scrollTop = privateMessagesDiv.scrollHeight;
             }
-            pthread_mutex_unlock(&clients_mutex);
-            break;
+        });
+
+        socket.on('user_disconnected', (data) => {
+            console.log('User disconnected:', data);
+            if (data.username && activeUsers.has(data.username)) {
+                activeUsers.delete(data.username);
+                updateActiveUsersList();
+
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message system-message';
+                messageDiv.textContent = `${data.username} has disconnected`;
+                messagesDiv.appendChild(messageDiv);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+        });
+
+        socket.on('active_users', (data) => {
+            console.log('Received active users:', data);
+            data.users.forEach(user => activeUsers.add(user));
+            updateActiveUsersList();
+        });
+
+        function updateActiveUsersList() {
+            activeUsersDiv.innerHTML = '';
+            activeUsers.forEach(username => {
+                const userDiv = document.createElement('div');
+                userDiv.className = 'user-item';
+                userDiv.textContent = username;
+                activeUsersDiv.appendChild(userDiv);
+            });
         }
-        else
-        {
-            perror("Read failed");
-            break;
-        }
-    }
+         
+        // Add logging for disconnection
+        socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+        });
+    </script>
+</body>
 
-    close(client_socket);
-    free(arg);
-    return NULL;
-}
-
-int main()
-{
-    int server_fd, new_socket;
-    struct sockaddr_in address;
-    int addrlen = sizeof(address);
-    int opt = 1;
-
-    
-    for (int i = 0; i < MAX_CLIENTS; i++)
-    {
-        clients[i].socket = 0;
-        clients[i].active = 0;
-        memset(clients[i].username, 0, USERNAME_SIZE);
-    }
-
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
-    {
-        perror("Socket failed");
-        exit(EXIT_FAILURE);
-    }
-
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)))
-    {
-        perror("Setsockopt failed");
-        exit(EXIT_FAILURE);
-    }
-
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
-
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
-    {
-        perror("Bind failed");
-        exit(EXIT_FAILURE);
-    }
-
-    if (listen(server_fd, 3) < 0)
-    {
-        perror("Listen failed");
-        exit(EXIT_FAILURE);
-    }
-
-    printf("Server is running...\n");
-
-    while (1)
-    {
-        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0)
-        {
-            perror("Accept failed");
-            continue;
-        }
-
-        int *client_sock = malloc(sizeof(int));
-        *client_sock = new_socket;
-
-        pthread_t thread_id;
-        if (pthread_create(&thread_id, NULL, handle_client, (void *)client_sock) < 0)
-        {
-            perror("Could not create thread");
-            free(client_sock);
-            close(new_socket);
-            continue;
-        }
-
-        pthread_detach(thread_id);
-    }
-
-    close(server_fd);
-    return 0;
-}
+</html>
