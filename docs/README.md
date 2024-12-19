@@ -108,6 +108,7 @@ venv\Scripts\activate     # On Windows
 
 Then install the requirements:
 ```bash
+cd ./docs
 pip install -r requirements.txt
 ```
 
